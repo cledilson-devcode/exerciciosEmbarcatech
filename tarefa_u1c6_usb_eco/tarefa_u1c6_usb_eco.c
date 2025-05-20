@@ -5,66 +5,85 @@
  *        Recebe comandos de cor via serial USB, faz eco e acende o LED correspondente.
  */
 
-#include <stdio.h>
-#include <string.h>     // Para strcmp, strlen, strcspn
-#include "pico/stdlib.h"
-#include "tusb.h"       // Biblioteca TinyUSB
+// Inclusão de bibliotecas padrão e do Pico SDK
+#include <stdio.h>      // Para funções de entrada/saída padrão como printf.
+#include <string.h>     // Para funções de manipulação de strings como strcmp, strlen, strcspn.
+#include "pico/stdlib.h" // Cabeçalho principal do SDK do Pico, inclui tipos básicos e funções utilitárias.
+#include "tusb.h"       // Cabeçalho principal da biblioteca TinyUSB para funcionalidade USB.
 
 // --- Definições de Pinos dos LEDs (Conforme BitDogLab e Tarefa) ---
-#define LED_PIN_VERMELHO 13
-#define LED_PIN_VERDE    11
-#define LED_PIN_AZUL     12
+// Define macros para os números dos pinos GPIO conectados aos LEDs.
+// Isso torna o código mais legível e fácil de modificar se os pinos mudarem.
+#define LED_PIN_VERMELHO 13 // GPIO 13 controla o LED vermelho.
+#define LED_PIN_VERDE    11 // GPIO 11 controla o LED verde.
+#define LED_PIN_AZUL     12 // GPIO 12 controla o LED azul.
 
 // --- Comandos Esperados ---
+// Define ponteiros constantes para strings que representam os comandos válidos.
+// Usar ponteiros constantes para strings literais é eficiente.
 const char *CMD_VERMELHO = "vermelho";
 const char *CMD_VERDE    = "verde";
 const char *CMD_AZUL     = "azul";
 
 
-#define BOARD_TUD_RHPORT 0
 
 
 // ==========================================================================
 // --- Protótipos de Função (Assinaturas) ---
 // ==========================================================================
-void configurar_hardware_inicial();
-void processar_comando_cdc(char *buffer, uint32_t tamanho_buffer);
-void controlar_led_por_comando(const char *comando);
-void apagar_todos_os_leds();
+// Declarações antecipadas das funções definidas posteriormente no arquivo.
+// Isso permite que as funções sejam chamadas antes de suas implementações completas
+// serem encontradas pelo compilador, e ajuda na organização do código.
 
-// Callbacks TinyUSB (opcionais para funcionalidade básica, mas boas práticas)
-void tud_cdc_mount_cb(uint8_t itf);
-void tud_cdc_umount_cb(uint8_t itf);
-void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const* p_line_coding);
+void configurar_hardware_inicial(); // Função para configurar pinos e stdio.
+void processar_comando_cdc(char *buffer, uint32_t tamanho_buffer); // Função para tratar dados recebidos via USB CDC.
+void controlar_led_por_comando(const char *comando); // Função para acender o LED com base no comando.
+void apagar_todos_os_leds(); // Função para desligar todos os LEDs.
+
+
 
 // ==========================================================================
 // --- Função Principal ---
 // ==========================================================================
 int main() {
-    // Inicializa stdio e hardware básico (LEDs)
+    // Chama a função para configurar stdio (para printf) e os pinos dos LEDs.
     configurar_hardware_inicial();
+    
+    
+    while (!tud_cdc_connected()) {
+        sleep_ms(100);
+    }
+    // Informa via terminal serial que a conexão foi detectada
+    printf("USB conectado!\n");
 
-    // Inicializa a pilha TinyUSB
-    tud_init(BOARD_TUD_RHPORT);
-
-    printf("Dispositivo CDC Eco com LEDs. Aguardando conexão USB...\n");
-
-    // Loop principal
+    // Loop principal infinito da aplicação.
     while (true) {
-        tud_task(); // Tarefa principal do TinyUSB - DEVE SER CHAMADA REPETIDAMENTE
+        // tud_task() é a função principal do TinyUSB. Ela DEVE ser chamada
+        // repetidamente dentro do loop principal. Ela processa eventos USB,
+        // como recebimento de dados, envio de dados, enumeração, etc.
+        tud_task();
 
-        // Verifica se o dispositivo CDC está montado e se há dados disponíveis
+        // Verifica duas condições:
+        // 1. tud_cdc_connected(): Se a interface CDC USB está conectada e configurada pelo host (PC).
+        // 2. tud_cdc_available(): Se há dados enviados pelo host e disponíveis para leitura na interface CDC.
         if (tud_cdc_connected() && tud_cdc_available()) {
-            char rx_buffer[64]; // Buffer para dados recebidos
-            // Lê os dados, deixando espaço para o terminador nulo
+            // Declara um buffer (array de caracteres) para armazenar os dados recebidos.
+            // Tamanho 64 é arbitrário, mas suficiente para comandos curtos.
+            char rx_buffer[64];
+            // Lê os dados da FIFO de recepção do CDC para rx_buffer.
+            // sizeof(rx_buffer) - 1 garante que haverá espaço para um terminador nulo '\0'.
+            // 'count' armazena o número de bytes realmente lidos.
             uint32_t count = tud_cdc_read(rx_buffer, sizeof(rx_buffer) - 1);
 
+            // Se algum dado foi lido (count > 0).
             if (count > 0) {
+                // Chama a função para processar o comando recebido.
                 processar_comando_cdc(rx_buffer, count);
             }
         }
     }
-    return 0; // Nunca alcançado
+    // Esta linha nunca é alcançada em um programa embarcado típico com loop infinito.
+    return 0;
 }
 
 // ==========================================================================
@@ -72,45 +91,53 @@ int main() {
 // ==========================================================================
 
 /**
- * Configura os pinos dos LEDs como saída e inicializa stdio.
+ * Configura os pinos GPIO dos LEDs como saídas e inicializa a comunicação serial (stdio).
  */
 void configurar_hardware_inicial() {
-    stdio_init_all(); // Inicializa stdio (USB e/ou UART)
+    // Inicializa todas as interfaces stdio padrão (USB, UART se configurado).
+    // É importante para printf e para o funcionamento correto do TinyUSB CDC.
+    stdio_init_all();
 
-    gpio_init(LED_PIN_VERMELHO);
-    gpio_set_dir(LED_PIN_VERMELHO, GPIO_OUT);
+    // Configura o pino do LED Vermelho.
+    gpio_init(LED_PIN_VERMELHO);              // Inicializa o pino GPIO.
+    gpio_set_dir(LED_PIN_VERMELHO, GPIO_OUT); // Define o pino como saída.
 
+    // Configura o pino do LED Verde.
     gpio_init(LED_PIN_VERDE);
     gpio_set_dir(LED_PIN_VERDE, GPIO_OUT);
 
+    // Configura o pino do LED Azul.
     gpio_init(LED_PIN_AZUL);
     gpio_set_dir(LED_PIN_AZUL, GPIO_OUT);
 
+    // Garante que todos os LEDs comecem desligados.
     apagar_todos_os_leds();
     printf("Hardware (LEDs e stdio) configurado.\n");
 }
 
 /**
- * Apaga todos os LEDs do RGB.
+ * Desliga todos os LEDs do RGB (coloca os pinos em nível baixo).
  */
 void apagar_todos_os_leds() {
-    gpio_put(LED_PIN_VERMELHO, 0);
+    gpio_put(LED_PIN_VERMELHO, 0); // 0 para desligar.
     gpio_put(LED_PIN_VERDE, 0);
     gpio_put(LED_PIN_AZUL, 0);
 }
 
 /**
- * Acende um LED específico por 1 segundo com base no comando recebido.
+ * Acende um LED específico por 1 segundo com base no comando de cor recebido.
  * @param comando String contendo o comando de cor ("vermelho", "verde", "azul").
  */
 void controlar_led_por_comando(const char *comando) {
-    apagar_todos_os_leds(); // Garante que outros LEDs estejam apagados
+    apagar_todos_os_leds(); // Primeiro, apaga qualquer LED que estivesse aceso.
 
+    // Compara a string 'comando' com os comandos predefinidos.
+    // strcmp retorna 0 se as strings forem iguais.
     if (strcmp(comando, CMD_VERMELHO) == 0) {
         printf("-> Acionando LED Vermelho\n");
-        gpio_put(LED_PIN_VERMELHO, 1);
-        sleep_ms(1000);
-        gpio_put(LED_PIN_VERMELHO, 0);
+        gpio_put(LED_PIN_VERMELHO, 1); // 1 para acender.
+        sleep_ms(1000);                // Mantém o LED aceso por 1000 ms (1 segundo).
+        gpio_put(LED_PIN_VERMELHO, 0); // Apaga o LED.
     } else if (strcmp(comando, CMD_VERDE) == 0) {
         printf("-> Acionando LED Verde\n");
         gpio_put(LED_PIN_VERDE, 1);
@@ -122,67 +149,46 @@ void controlar_led_por_comando(const char *comando) {
         sleep_ms(1000);
         gpio_put(LED_PIN_AZUL, 0);
     } else {
+        // Se o comando não for reconhecido.
         printf("-> Comando de cor desconhecido: '%s'\n", comando);
-        // Opcional: piscar todos os LEDs brevemente para indicar erro de comando
     }
+    // Após 1 segundo, o LED específico já foi apagado.
+    // Não é estritamente necessário apagar todos novamente aqui, mas não prejudica.
 }
 
 /**
- * Processa os dados recebidos do host via CDC.
- * Imprime o recebido, identifica o comando, controla o LED e faz o eco.
- * @param buffer Ponteiro para o buffer com os dados recebidos.
- * @param tamanho_buffer Número de bytes recebidos.
+ * Processa os dados recebidos do host (PC) via interface CDC USB.
+ * Limpa a string, identifica o comando, controla o LED e envia um eco de volta.
+ * @param buffer Ponteiro para o buffer com os dados crus recebidos.
+ * @param tamanho_buffer Número de bytes que foram lidos para o buffer.
  */
 void processar_comando_cdc(char *buffer, uint32_t tamanho_buffer) {
-    // Adiciona terminador nulo para tratar como string C
+    // Adiciona um terminador nulo ao final dos dados recebidos.
+    // Isso transforma o buffer de bytes crus em uma string C válida,
+    // permitindo o uso de funções de string como strcmp e strlen.
     buffer[tamanho_buffer] = '\0';
 
-    // Remove caracteres de nova linha ou carriage return do final
-    // strcspn encontra o índice do primeiro caractere de \r ou \n
+    // Remove caracteres de nova linha (\n) ou retorno de carro (\r) do final da string.
+    // Terminais seriais frequentemente enviam esses caracteres quando você pressiona Enter.
+    // strcspn retorna o comprimento da porção inicial de 'buffer' que NÃO contém
+    // nenhum dos caracteres em "\r\n". Ao colocar '\0' nessa posição, cortamos a string ali.
     buffer[strcspn(buffer, "\r\n")] = 0;
 
+    // Imprime o comando "limpo" que foi recebido.
     printf("Host enviou: '%s'\n", buffer);
 
-    // Identifica o comando e controla o LED (Ação 3 e 6)
+    // Chama a função para acender o LED correspondente ao comando.
     controlar_led_por_comando(buffer);
 
-    // Realiza o ECO do comando original (Ação 2 e 5)
-    tud_cdc_write_str("Eco: ");
-    tud_cdc_write(buffer, strlen(buffer)); // Envia a string limpa
-    tud_cdc_write_str("\n");
-    tud_cdc_write_flush(); // Envia os dados imediatamente
+    // Envia o eco de volta para o host.
+    tud_cdc_write_str("Eco: "); // Envia o prefixo "Eco: ".
+    // Envia o conteúdo do buffer (o comando limpo). strlen(buffer) calcula o tamanho da string limpa.
+    tud_cdc_write(buffer, strlen(buffer));
+    tud_cdc_write_str("\n"); // Envia uma nova linha para formatar a saída no terminal do host.
+    // tud_cdc_write_flush() garante que os dados no buffer de escrita do TinyUSB sejam enviados
+    // imediatamente para o host, em vez de esperar o buffer encher.
+    tud_cdc_write_flush();
 }
 
-// ==========================================================================
-// --- Callbacks do TinyUSB (Opcionais para este exemplo, mas boas práticas) ---
-// ==========================================================================
 
-/**
- * Chamada quando o dispositivo CDC é montado (conexão USB estabelecida com o host).
- */
-void tud_cdc_mount_cb(uint8_t itf) {
-    (void)itf; // Evita warning de parâmetro não utilizado
-    printf("Interface CDC USB conectada!\n");
-    // Envia mensagem de boas-vindas
-    // tud_cdc_write_str("Pico CDC EcoLED pronto.\r\n");
-    // tud_cdc_write_flush();
-}
 
-/**
- * Chamada quando o dispositivo CDC é desmontado.
- */
-void tud_cdc_umount_cb(uint8_t itf) {
-    (void)itf;
-    printf("Interface CDC USB desconectada.\n");
-}
-
-/**
- * Chamada quando a configuração da linha serial (taxa de bits, etc.) é alterada pelo host.
- * Não é essencial para a funcionalidade de eco, mas útil para depuração.
- */
-void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const* p_line_coding) {
-  (void) itf;
-  printf("CDC Line Coding: bitrate %lu, stop bits %u, parity %u, data bits %u\n",
-         p_line_coding->bit_rate, p_line_coding->stop_bits,
-         p_line_coding->parity, p_line_coding->data_bits);
-}
