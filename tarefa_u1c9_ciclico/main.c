@@ -4,194 +4,145 @@
  *  Projeto: TempCycleDMA
  * ------------------------------------------------------------
  *  Descrição:
- *      Ciclo principal do sistema embarcado, utilizando timers
- *      para escalonamento de tarefas:
+ *      Monitora temperatura e atualiza display OLED e LEDs NeoPixel.
+ *      Tarefas escalonadas por timers do RP2040, com I/O no loop principal.
  *
- *      - Leitura da temperatura via DMA (iniciada por timer)
- *      - Exibição da temperatura e tendência no OLED (acionada por flag/timer)
- *      - Análise da tendência da temperatura (acionada por flag/timer)
- *      - Controle NeoPixel por tendência (acionada por flag/timer)
+ *      Fluxo:
+ *      1. Timer A sinaliza (flag) para Tarefa 1 (leitura de temperatura) no main.
+ *      2. Tarefa 1 no main atualiza 'media' e sinaliza (flag) dados prontos.
+ *      3. Timer B verifica dados prontos e sinaliza (flag) para o main processar
+ *         as "demais tarefas" (análise, OLED, NeoPixel, extra).
+ *      4. Main executa I/O e lógica quando flags ativas; dorme (__wfi()) ocioso.
  *
- *      O sistema utiliza watchdog para segurança, terminal USB
- *      para monitoramento e display OLED para visualização direta.
- *
- *  
- *  
+ *      Atendimento aos Requisitos:
+ *      - Sincronização em função da primeira:
+ *          Demais tarefas dependem da flag 'flag_media_foi_lida_e_esta_pronta',
+ *          setada após Tarefa 1. Timer B age sobre esta flag.
+ *      - add_repeating_timer_ms nas demais tarefas:
+ *          Timer B (com add_repeating_timer_ms) dispara o início da sequência
+ *          das "demais tarefas" (análise no callback, I/O sinalizada para o main).
+ *      - repeating_timer_callback para a Tarefa 1:
+ *          Timer A usa 'callback_disparar_leitura_temp' para sinalizar (flag)
+ *          a execução da Tarefa 1 no main.
  * ------------------------------------------------------------
  */
 
 #include <stdio.h>
 #include "pico/stdlib.h"
-#include "hardware/watchdog.h"
-#include "pico/util/queue.h" // Para possível comunicação segura entre ISRs e main, se necessário
-#include "hardware/timer.h"   // Para add_repeating_timer_ms
+// #include "hardware/watchdog.h" // Para watchdog, se usado
+#include "hardware/timer.h"      // Para timers
+#include "hardware/sync.h"       // Para __wfi, tight_loop_contents
 
 #include "inc/setup.h"
 #include "inc/tarefas/tarefa1_temp.h"
 #include "inc/tarefas/tarefa2_display.h"
 #include "inc/tarefas/tarefa3_tendencia.h"
 #include "inc/tarefas/tarefa4_controla_neopixel.h"
-#include "inc/neopixel_driver.h" // Para npSetAll, npWrite, npClear em tarefa_5
-#include "inc/testes_cores.h"    // Para COR_BRANCA em tarefa_5
-#include "pico/stdio_usb.h"
+#include "inc/neopixel_driver.h"
+#include "inc/testes_cores.h"
+// #include "pico/stdio_usb.h" // Para printf, se usado
 
-// Variáveis globais existentes
-float media;
-tendencia_t t;
-absolute_time_t ini_tarefa1, fim_tarefa1, ini_tarefa2, fim_tarefa2, ini_tarefa3, fim_tarefa3, ini_tarefa4, fim_tarefa4; // Manter para medição, se desejado
 
-// --- Interruptores de Software (Flags) ---
-volatile bool iniciar_leitura_temp = true; // Inicia a primeira leitura imediatamente
-volatile bool nova_media_calculada = false;
-volatile bool executar_tarefas_dependentes = false; // Para agrupar análise, display, neopixel
+// --- Variáveis Globais ---
+float media;     // Média da temperatura (Tarefa 1).
+tendencia_t t; // Tendência térmica (Tarefa 3).
 
-// --- Protótipos das Funções de Tarefa (já existentes) ---
-void tarefa_1_wrapper(); // Wrapper para medir tempo
-void tarefa_2_wrapper(); // Wrapper para medir tempo
-void tarefa_3_wrapper(); // Wrapper para medir tempo
-void tarefa_4_wrapper(); // Wrapper para medir tempo
-void tarefa_5();         // Tarefa extra
+// --- Flags de Controle (volatile: acesso por ISR e main) ---
+volatile bool flag_main_deve_ler_temp = true;             // Timer A: main deve iniciar Tarefa 1.
+volatile bool flag_media_foi_lida_e_esta_pronta = false;  // Main: Tarefa 1 concluída, 'media' pronta.
+volatile bool flag_main_deve_processar_dependentes = false; // Timer B: main deve processar tarefas 2,3,4,5.
 
-// --- Callbacks dos Timers ---
-bool timer_callback_iniciar_temp(struct repeating_timer *rt) {
-    iniciar_leitura_temp = true;
-    return true; // Keep repeating
-}
 
-bool timer_callback_processar_dados(struct repeating_timer *rt) {
-    if (nova_media_calculada) {
-        executar_tarefas_dependentes = true;
-        nova_media_calculada = false; // Resetar flag após sinalizar
+// Tarefa 5: Animação NeoPixel. Chamada pelo main.
+void executar_logica_tarefa_5_no_main_loop() {
+    static uint8_t t5_counter = 0; // Alterna efeito.
+    if (media < 1.0f && media > -50.0f) { // Executa se 'media' válida.
+        if (t5_counter % 2 == 0) {
+            npSetAll(COR_MIN, COR_MIN, COR_MIN); // Branco suave.
+        } else {
+            npClear(); // Apaga.
+        }
+        npWrite(); // Atualiza NeoPixels.
     }
-    return true; // Keep repeating
+    t5_counter++;
 }
 
+// --- Callbacks dos Timers (Executados em Interrupção) ---
+
+// Timer A Callback: Sinaliza para main iniciar leitura de temperatura.
+bool callback_disparar_leitura_temp(struct repeating_timer *rt) {
+    // Só sinaliza se não houver leitura pendente ou dados não processados.
+    if (!flag_main_deve_ler_temp && !flag_media_foi_lida_e_esta_pronta) {
+        flag_main_deve_ler_temp = true; // Avisa main para executar Tarefa 1.
+    }
+    return true; // Continua o timer.
+}
+
+// Timer B Callback: Sinaliza para main processar tarefas dependentes.
+bool callback_disparar_processamento_dependentes(struct repeating_timer *rt) {
+    // Só sinaliza se 'media' está pronta e não há processamento dependente já agendado.
+    if (flag_media_foi_lida_e_esta_pronta && !flag_main_deve_processar_dependentes) {
+        flag_main_deve_processar_dependentes = true; // Avisa main para tarefas 3,2,4,5.
+    }
+    return true; // Continua o timer.
+}
+
+// Função principal.
 int main() {
-    setup();  // Inicializações: ADC, DMA, interrupções, OLED, NeoPixel, etc.
+    setup();  // Inicializações de hardware e software.
 
-    // Aguardar conexão USB para debug (opcional)
-    // while (!stdio_usb_connected()) {
-    //     sleep_ms(100);
-    // }
-    // printf("TempCycleDMA com Timers Iniciado\n");
+    // watchdog_enable(3000, 1); // Opcional: habilita watchdog.
 
-    // Ativa o watchdog com timeout de ~2 segundos (ajuste conforme necessidade)
-    // watchdog_enable(2000, 1);
+    // Configura Timer A (dispara Tarefa 1 via main).
+    struct repeating_timer timer_t1_obj;
+    if (!add_repeating_timer_ms(-1200, callback_disparar_leitura_temp, NULL, &timer_t1_obj)) {
+        while(1){ /* Erro Timer A */ } // Trava em caso de erro.
+    }
 
-    // --- Configuração dos Timers Repetitivos ---
-    // Timer para iniciar a leitura de temperatura (ex: a cada 1200 ms, > 0.5s da tarefa + margem)
-    struct repeating_timer timer_temp;
-    add_repeating_timer_ms(1200, timer_callback_iniciar_temp, NULL, &timer_temp);
-
-    // Timer para processar dados e atualizar saídas (ex: a cada 200 ms)
-    struct repeating_timer timer_process;
-    add_repeating_timer_ms(200, timer_callback_processar_dados, NULL, &timer_process);
-
-
-    uint32_t ciclo_count = 0;
-
+    // Configura Timer B (dispara tarefas dependentes via main).
+    struct repeating_timer timer_t_deps_obj;
+    if (!add_repeating_timer_ms(300, callback_disparar_processamento_dependentes, NULL, &timer_t_deps_obj)) {
+         while(1){ /* Erro Timer B */ } // Trava em caso de erro.
+    }
+    
+    // Loop principal: executa tarefas com base nas flags.
     while (true) {
-        //watchdog_update();  // Alimente o watchdog
+        // watchdog_update(); // Opcional: alimenta watchdog.
 
-        if (iniciar_leitura_temp) {
-            iniciar_leitura_temp = false; // Resetar flag
-            
-            // Medição de tempo para Tarefa 1
-            ini_tarefa1 = get_absolute_time();
-            media = tarefa1_obter_media_temp(&cfg_temp, DMA_TEMP_CHANNEL); // Esta função é bloqueante por ~0.5s
-            fim_tarefa1 = get_absolute_time();
-            
-            nova_media_calculada = true; // Sinalizar que novos dados estão prontos
-            // printf("T1 concluída. Média: %.2f\n", media); // Debug
+        // Se Timer A sinalizou para Tarefa 1.
+        if (flag_main_deve_ler_temp) {
+            flag_main_deve_ler_temp = false; // Consome flag.
+            media = tarefa1_obter_media_temp(&cfg_temp, DMA_TEMP_CHANNEL); // Executa Tarefa 1.
+            flag_media_foi_lida_e_esta_pronta = true; // 'media' pronta para Tarefas Dependentes.
         }
 
-        if (executar_tarefas_dependentes) {
-            executar_tarefas_dependentes = false; // Resetar flag
-
-            // --- Tarefa 3 Lógica (Análise de tendência) ---
-            // (Corrigindo a chamada original do main.c)
-            ini_tarefa3 = get_absolute_time();
-            t = tarefa3_analisa_tendencia(media);
-            fim_tarefa3 = get_absolute_time();
-
-            // --- Tarefa 2 Lógica (Exibição no OLED) ---
-            // (Corrigindo a chamada original do main.c)
-            ini_tarefa2 = get_absolute_time();
-            tarefa2_exibir_oled(media, t);
-            fim_tarefa2 = get_absolute_time();
+        // Se Timer B sinalizou para Tarefas Dependentes.
+        if (flag_main_deve_processar_dependentes) {
+            flag_main_deve_processar_dependentes = false; // Consome flag.
             
-            // --- Tarefa 4: Cor da matriz NeoPixel por tendência ---
-            ini_tarefa4 = get_absolute_time();
-            tarefa4_matriz_cor_por_tendencia(t);
-            fim_tarefa4 = get_absolute_time();
+            t = tarefa3_analisa_tendencia(media);   // Tarefa 3: Análise.
+            tarefa2_exibir_oled(media, t);          // Tarefa 2: OLED.
+            tarefa4_matriz_cor_por_tendencia(t);    // Tarefa 4: NeoPixel.
+            executar_logica_tarefa_5_no_main_loop(); // Tarefa 5: Extra.
+            
+            flag_media_foi_lida_e_esta_pronta = false; // Dados da 'media' foram processados.
 
-            // --- Tarefa 5: Extra ---
-            // A tarefa 5 pode ser chamada aqui ou ter seu próprio mecanismo de disparo/timer
-            // Se chamada aqui, será executada com a frequência do timer_process quando há novos dados.
-            // Se for uma tarefa de baixa prioridade ou que não dependa diretamente dos outros dados,
-            // poderia ser executada no loop while(true) com menor frequência.
-            // Por ora, vamos manter a chamada aqui para seguir o fluxo anterior.
-            tarefa_5(); // Executa a lógica da tarefa 5
-
-            // --- Cálculo e Exibição dos tempos de execução (a cada ciclo de processamento) ---
-            int64_t tempo1_us = absolute_time_diff_us(ini_tarefa1, fim_tarefa1); // Será o último tempo da T1
-            int64_t tempo2_us = absolute_time_diff_us(ini_tarefa2, fim_tarefa2);
-            int64_t tempo3_us = absolute_time_diff_us(ini_tarefa3, fim_tarefa3);
-            int64_t tempo4_us = absolute_time_diff_us(ini_tarefa4, fim_tarefa4); // Último tempo da T4
-
-            printf("[%lu] Temp: %.2f°C | T1:%.3fs T2:%.3fs T3:%.3fs T4:%.3fs | Tend: %s\n",
-                   ciclo_count++,
-                   media,
-                   tempo1_us / 1e6,
-                   tempo2_us / 1e6,
-                   tempo3_us / 1e6,
-                   (tempo4_us > 0 && tempo4_us < 500000) ? tempo4_us / 1e6 : 0.0, // Evita tempos inválidos se T4 não rodou
-                   tendencia_para_texto(t));
+            // Diagnóstico opcional (manter comentado para teste inicial).
+            // static uint32_t diag_cnt = 0;
+            // if (stdio_usb_connected()) {
+            //    printf("[%lu] T:%.2fC (%s)\n", diag_cnt++, media, tendencia_para_texto(t));
+            // }
         }
-        
-        // O loop principal pode fazer outras coisas de baixa prioridade aqui
-        // ou simplesmente ceder tempo (embora os timers já façam isso de certa forma).
-        // __wfi(); // Pode ser usado para economizar energia se não houver mais nada a fazer
-        //           // até a próxima interrupção de timer. Cuidado para não perder flags.
-        //           // Se as flags são setadas em ISRs, a CPU acordará.
-        
-        // Pequeno delay para não sobrecarregar o printf se as flags não forem acionadas
-        // por um tempo, ou para permitir que outras interrupções de menor prioridade ocorram.
-        // No entanto, com os timers, o loop principal só age quando as flags são setadas.
-        // Um __wfi() aqui pode ser mais eficiente.
-        if (!iniciar_leitura_temp && !executar_tarefas_dependentes) {
-             tight_loop_contents(); // Ou __wfi(); se apropriado
+
+        // Se não há trabalho imediato e 'media' não está pendente, economiza energia.
+        if (!flag_main_deve_ler_temp && 
+            !flag_main_deve_processar_dependentes &&
+            !flag_media_foi_lida_e_esta_pronta) {
+            __wfi(); // Dorme até próxima interrupção (timer).
+        } else {
+            // Se há trabalho ou 'media' aguarda processamento, mantém o loop ativo.
+            tight_loop_contents(); 
         }
     }
-
-    return 0; // Nunca alcançado
+    return 0; // Nunca alcançado.
 }
-
-
-// --- Wrappers das Tarefas (se for manter a medição de tempo como antes) ---
-// As medições de tempo foram movidas para o loop principal para maior clareza.
-// Estas funções são chamadas pelas funções originais (tarefa_1, tarefa_2, etc. do main original)
-// mas como as chamadas diretas são mais claras, estes wrappers podem não ser mais necessários
-// a menos que você queira restaurar a estrutura exata de chamada do main anterior.
-// Por simplicidade, as chamadas diretas foram feitas no loop principal acima.
-
-// A função tarefa_5() não precisa de wrapper se chamada diretamente.
-// A lógica de `tarefa_5()` original é:
-void tarefa_5() {
-    // A lógica original de piscar LEDs se media < 1
-    // Esta tarefa pode precisar de uma lógica de temporização não bloqueante
-    // se for para piscar continuamente sem parar o resto.
-    // No modelo atual, ela executa sua lógica uma vez quando chamada.
-    if (media < 1.0f && media > -50.0f) { // Adicionada verificação de limite inferior razoável
-        //printf("Tarefa 5: Média < 1 (%.2f), piscando NeoPixel.\n", media); // Debug
-        npSetAll(COR_BRANCA);
-        npWrite();
-        busy_wait_ms(200); // Usar busy_wait para delays curtos em vez de sleep_ms que pode ceder
-        npClear();
-        npWrite();
-        busy_wait_ms(200);
-    }
-}
-
-// Manter os protótipos das funções de tarefa se não estiverem em headers
-// (já estão, então não precisa declarar aqui)
