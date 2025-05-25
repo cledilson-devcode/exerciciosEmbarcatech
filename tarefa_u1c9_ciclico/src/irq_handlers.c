@@ -25,7 +25,7 @@
  */
 
 #include "hardware/dma.h"
-#include "irq_handlers.h"
+#include "inc/irq_handlers.h"
 
 // Flag global que sinaliza a conclusão da transferência DMA
 volatile bool dma_temp_done = false;

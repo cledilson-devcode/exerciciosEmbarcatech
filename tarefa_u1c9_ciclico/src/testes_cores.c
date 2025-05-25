@@ -1,7 +1,7 @@
-#include "LabNeoPixel/neopixel_driver.h"
+#include "inc/neopixel_driver.h"
 #include "pico/stdlib.h"
-#include "testes_cores.h"
-#include "LabNeoPixel/efeitos.h"
+#include "inc/testes_cores.h"
+#include "inc/efeitos.h"
 
 typedef struct {
     uint8_t r, g, b;

@@ -35,16 +35,16 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(TempCycleDMA main.c setup.c irq_handlers.c tarefa1_temp.c tarefa2_display.c
-inc/display_utils.c
-inc/big_string_drawer.c
-inc/ssd1306_i2c.c
-inc/font_big_logo_data.c
-tarefa3_tendencia.c
-tarefa4_controla_neopixel.c
-testes_cores.c
-LabNeoPixel/neopixel_driver.c
-LabNeoPixel/efeitos.c)
+add_executable(TempCycleDMA main.c src/setup.c src/irq_handlers.c src/tarefas/tarefa1_temp.c src/tarefas/tarefa2_display.c
+src/display_utils.c
+src/big_string_drawer.c
+src/ssd1306_i2c.c
+src/font_big_logo_data.c
+src/tarefas/tarefa3_tendencia.c
+src/tarefas/tarefa4_controla_neopixel.c
+src/testes_cores.c
+src/neopixel_driver.c
+src/efeitos.c)
 
 pico_set_program_name(TempCycleDMA "TempCycleDMA")
 pico_set_program_version(TempCycleDMA "0.1")
@@ -63,7 +63,13 @@ target_link_libraries(TempCycleDMA pico_stdlib
     hardware_pio)
 
 # Add the standard include files to the build
-target_include_directories(TempCycleDMA PRIVATE ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_CURRENT_LIST_DIR}/inc ${CMAKE_CURRENT_LIST_DIR}/LabNeoPixel)
+target_include_directories(TempCycleDMA PRIVATE ${CMAKE_CURRENT_LIST_DIR} 
+    ${CMAKE_CURRENT_LIST_DIR}/inc 
+    ${CMAKE_CURRENT_LIST_DIR}/inc/tarefas
+    ${CMAKE_CURRENT_LIST_DIR}/src/
+    ${CMAKE_CURRENT_LIST_DIR}/src/tarefas
+    
+    )
 
 # Add any user requested libraries
 #target_link_libraries(TempCycleDMA)
@@ -71,4 +77,4 @@ target_include_directories(TempCycleDMA PRIVATE ${CMAKE_CURRENT_LIST_DIR} ${CMAK
 pico_add_extra_outputs(TempCycleDMA)
 
 # Generate PIO header
-pico_generate_pio_header(TempCycleDMA ${CMAKE_CURRENT_LIST_DIR}/LabNeoPixel/ws2818b.pio)
+pico_generate_pio_header(TempCycleDMA ${CMAKE_CURRENT_LIST_DIR}/inc/ws2818b.pio)

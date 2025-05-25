@@ -18,10 +18,10 @@
 
 #include <stdio.h>
 #include <string.h>
-#include "ssd1306.h"
-#include "display_utils.h"
-#include "tarefa2_display.h"
-#include "tarefa3_tendencia.h"
+#include "inc/ssd1306.h"
+#include "inc/display_utils.h"
+#include "inc/tarefas/tarefa2_display.h"
+#include "inc/tarefas/tarefa3_tendencia.h"
 
 extern uint8_t ssd[];
 extern struct render_area area;

@@ -1,7 +1,7 @@
-#include "LabNeoPixel/neopixel_driver.h"
-#include "LabNeoPixel/efeitos.h"
+#include "inc/neopixel_driver.h"
+#include "inc/efeitos.h"
 #include "pico/stdlib.h"
-#include "testes_cores.h"
+#include "inc/testes_cores.h"
 #include <stdlib.h> 
 
 

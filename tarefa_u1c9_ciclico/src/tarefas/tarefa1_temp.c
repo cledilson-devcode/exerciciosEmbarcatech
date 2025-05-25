@@ -35,7 +35,7 @@
 #include "hardware/adc.h"
 #include "hardware/dma.h"
 #include "hardware/sync.h"
-#include "tarefa1_temp.h"
+#include "inc/tarefas/tarefa1_temp.h"
 
 #define BLOCO_AMOSTRAS 10000
 #define DURACAO_AMOSTRAGEM_US 500000  // 0,5 segundos em microssegundos

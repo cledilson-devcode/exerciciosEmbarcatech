@@ -35,13 +35,13 @@
 #include "hardware/adc.h"
 #include "hardware/dma.h"
 #include "hardware/irq.h"
-#include "setup.h"
-#include "irq_handlers.h"
-#include "ssd1306.h"
-#include "ssd1306_i2c.h"
+#include "inc/setup.h"
+#include "inc/irq_handlers.h"
+#include "inc/ssd1306.h"
+#include "inc/ssd1306_i2c.h"
 #include "hardware/i2c.h"
 #include "pico/binary_info.h"
-#include "neopixel_driver.h"
+#include "inc/neopixel_driver.h"
 
 // === Buffer de vídeo do OLED (tela de 128 x 64) ===
 uint8_t ssd[ssd1306_buffer_length];

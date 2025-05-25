@@ -2,7 +2,7 @@
 #define EFEITOS_H
 
 #include <stdint.h>
-#include "LabNeoPixel/efeitos.h"
+#include "inc/efeitos.h"
 
 
 void acenderFileira(uint8_t y, uint8_t r, uint8_t g, uint8_t b);

@@ -26,13 +26,13 @@
 #include "pico/util/queue.h" // Para possível comunicação segura entre ISRs e main, se necessário
 #include "hardware/timer.h"   // Para add_repeating_timer_ms
 
-#include "setup.h"
-#include "tarefa1_temp.h"
-#include "tarefa2_display.h"
-#include "tarefa3_tendencia.h"
-#include "tarefa4_controla_neopixel.h"
-#include "neopixel_driver.h" // Para npSetAll, npWrite, npClear em tarefa_5
-#include "testes_cores.h"    // Para COR_BRANCA em tarefa_5
+#include "inc/setup.h"
+#include "inc/tarefas/tarefa1_temp.h"
+#include "inc/tarefas/tarefa2_display.h"
+#include "inc/tarefas/tarefa3_tendencia.h"
+#include "inc/tarefas/tarefa4_controla_neopixel.h"
+#include "inc/neopixel_driver.h" // Para npSetAll, npWrite, npClear em tarefa_5
+#include "inc/testes_cores.h"    // Para COR_BRANCA em tarefa_5
 #include "pico/stdio_usb.h"
 
 // Variáveis globais existentes

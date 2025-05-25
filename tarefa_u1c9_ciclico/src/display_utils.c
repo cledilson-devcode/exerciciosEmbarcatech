@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
-#include "display_utils.h"
-#include "big_string_drawer.h"
+#include "inc/display_utils.h"
+#include "inc/big_string_drawer.h"
 
 void mostrar_valor_grande(uint8_t *ssd, float valor, int y) {
     char buffer[16];

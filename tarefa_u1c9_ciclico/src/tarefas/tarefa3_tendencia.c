@@ -31,7 +31,7 @@
  * ------------------------------------------------------------
  */
 
-#include "tarefa3_tendencia.h"
+#include "inc/tarefas/tarefa3_tendencia.h"
 
 static float temperatura_anterior = 0.0f;
 static int primeiro_ciclo = 1;

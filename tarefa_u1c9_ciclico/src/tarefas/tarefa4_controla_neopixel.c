@@ -26,9 +26,9 @@
  * ------------------------------------------------------------
  */
 
-#include "neopixel_driver.h"
-#include "tarefa3_tendencia.h"
-#include "testes_cores.h"  // contém COR_AZUL, COR_VERDE, COR_VERMELHO
+#include "inc/neopixel_driver.h"
+#include "inc/tarefas/tarefa3_tendencia.h"
+#include "inc/testes_cores.h"  // contém COR_AZUL, COR_VERDE, COR_VERMELHO
 
 /**
  * @brief Define a cor de todos os LEDs da matriz de acordo com a tendência.

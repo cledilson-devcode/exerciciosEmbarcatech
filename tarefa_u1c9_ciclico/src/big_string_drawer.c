@@ -1,5 +1,5 @@
-#include "font_big_logo.h"
-#include "draw_big_char.h"
+#include "inc/font_big_logo.h"
+#include "inc/draw_big_char.h"
 #include <stddef.h>
 
 const uint8_t* get_big_bitmap(char c) {
