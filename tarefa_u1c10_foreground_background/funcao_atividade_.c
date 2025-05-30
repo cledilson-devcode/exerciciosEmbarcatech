@@ -1,4 +1,6 @@
-// funcao_atividade_.c
+//Arquivo: funcao_atividade_.c
+
+//Define constantes (pinos de botões/LEDs, debounce, tamanho da fila), protótipos de funções e declara variáveis globais extern para serem compartilhadas entre os arquivos.
 
 #include "funcao_atividade_.h"
 #include "funcoes_neopixel.h" // Para npClear, npWrite e extern index_neo
