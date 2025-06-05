@@ -1,14 +1,7 @@
 /**
  * Projeto: Servidor HTTP com controle de LED e Leitura de Temperatura via Access Point - Raspberry Pi Pico W
- * Baseado no exemplo picow_access_point_poll e adaptado para tarefa.
- *
- * Objetivos:
- * - Configurar o Raspberry Pi Pico W como um ponto de acesso (Access Point) Wi-Fi.
- * - Iniciar servidores DHCP e DNS locais.
- * - Criar um servidor HTTP embarcado que disponibiliza uma pagina HTML.
- * - Permitir o controle remoto de um LED (GPIO13) via comandos HTTP.
- * - Exibir a temperatura interna do RP2040 na pagina HTML e no terminal.
- * - Finalizacao controlada do modo Access Point via tecla 'd'.
+ * VERSAO SIMPLIFICADA PARA RESTABELECER ACESSO AO AP E PAGINA BASICA.
+ * JavaScript complexo removido temporariamente.
  */
 
 #include <string.h>
@@ -27,17 +20,26 @@
 #include "hardware/adc.h"
 
 #define TCP_PORT 80
-#define DEBUG_printf printf // Todas as mensagens de debug usarao printf
+#define DEBUG_printf printf
 #define POLL_TIME_S 5
-#define HTTP_GET "GET"
-#define HTTP_RESPONSE_HEADERS "HTTP/1.1 %d OK\nContent-Length: %d\nContent-Type: text/html; charset=utf-8\nConnection: close\n\n"
 
-#define LED_AND_TEMP_BODY "<html><head><title>Pico W Controle</title></head><body><h1>Pico W Controle</h1><p>LED esta %s</p><p><a href=\"?led=%d\">Mudar LED para %s</a></p><hr><p>Temperatura Interna: %.2f °C</p></body></html>"
+#define HTTP_GET "GET"
+
+// HTML PRINCIPAL EXTREMAMENTE SIMPLIFICADO - SEM JAVASCRIPT COMPLEXO
+#define MAIN_PAGE_HTML_SIMPLES \
+    "<html><head><title>Pico W Controle Simples</title>" \
+    "<meta http-equiv=\"refresh\" content=\"5\">" /* Meta refresh opcional, descomente se quiser */ \
+    "</head><body>" \
+    "<h1>Pico W Controle Simples</h1><p>LED esta: %s</p>" \
+    "<p><a href=\"/?led=%d\">Mudar LED para %s</a></p><hr>" \
+    "<p>Temperatura Interna: %.2f °C</p>" \
+    "</body></html>"
 
 #define LED_PARAM "led=%d"
-#define CONTROL_PAGE_PATH "/"
+#define PATH_MAIN_PAGE "/"
+#define PATH_API_TEMPERATURE "/api/temperatura" // Manteremos o endpoint, mas o HTML nao o usara nesta versao
 #define LED_GPIO 13
-#define HTTP_RESPONSE_REDIRECT_ROOT "HTTP/1.1 302 Redirect\nLocation: http://%s/\n\n"
+#define HTTP_REDIRECT_HEADER_FORMAT "HTTP/1.1 302 Found\r\nLocation: http://%s/\r\nConnection: close\r\n\r\n"
 
 
 typedef struct TCP_SERVER_T_ {
@@ -49,10 +51,10 @@ typedef struct TCP_SERVER_T_ {
 typedef struct TCP_CONNECT_STATE_T_ {
     struct tcp_pcb *pcb;
     int sent_len;
-    char headers[128];
-    char result[512];
+    char response_header[256]; 
+    char response_body[1024];   // Buffer razoavel para HTML simples
     int header_len;
-    int result_len;
+    int body_len;
     ip_addr_t *gw;
 } TCP_CONNECT_STATE_T;
 
@@ -62,7 +64,6 @@ float convert_to_celsius(uint16_t raw) {
     float voltage = raw * conversion_factor;
     return 27.0f - (voltage - 0.706f) / 0.001721f;
 }
-
 
 static err_t tcp_close_client_connection(TCP_CONNECT_STATE_T *con_state, struct tcp_pcb *client_pcb, err_t close_err) {
     if (client_pcb) {
@@ -94,46 +95,93 @@ static void tcp_server_close(TCP_SERVER_T *state) {
 
 static err_t tcp_server_sent(void *arg, struct tcp_pcb *pcb, u16_t len) {
     TCP_CONNECT_STATE_T *con_state = (TCP_CONNECT_STATE_T*)arg;
-    DEBUG_printf("tcp_server_sent %u bytes\n", len);
-    if (!con_state) return ERR_OK;
+    if (!con_state) return ERR_OK; // Evita crash se con_state ja foi liberado
 
     con_state->sent_len += len;
-    if (con_state->sent_len >= con_state->header_len + con_state->result_len) {
-        DEBUG_printf("envio completo: %d bytes no total (cabecalho %d, resultado %d)\n", con_state->sent_len, con_state->header_len, con_state->result_len);
+    if (con_state->sent_len >= con_state->header_len + con_state->body_len) {
+        //DEBUG_printf("envio completo: %d bytes (cab: %d, corpo: %d)\n", con_state->sent_len, con_state->header_len, con_state->body_len);
         return tcp_close_client_connection(con_state, pcb, ERR_OK);
     }
     return ERR_OK;
 }
 
-static int server_content_handler(const char *request_path, const char *params, char *result, size_t max_result_len) {
-    int len = 0;
-    if (strcmp(request_path, CONTROL_PAGE_PATH) == 0) {
-        bool current_led_state = gpio_get(LED_GPIO);
-        if (params) {
+// generate_server_response_content - USANDO HTML SIMPLIFICADO
+static void generate_server_response_content(TCP_CONNECT_STATE_T *con_state, const char *request_path, const char *params) {
+    con_state->body_len = 0;
+    con_state->header_len = 0;
+    int http_status_code = 200;
+    const char *http_status_text = "OK";
+    char content_type_str[64] = "text/html; charset=utf-8";
+
+    if (strcmp(request_path, PATH_MAIN_PAGE) == 0) {
+        bool led_state_final = gpio_get(LED_GPIO); 
+
+        if (params) { 
             int led_val_from_param;
             if (sscanf(params, LED_PARAM, &led_val_from_param) == 1) {
                 gpio_put(LED_GPIO, led_val_from_param ? 1 : 0);
-                current_led_state = led_val_from_param ? true : false;
-                DEBUG_printf("LED %s por requisicao\n", current_led_state ? "LIGADO" : "DESLIGADO");
+                led_state_final = led_val_from_param ? true : false; 
+                DEBUG_printf("LED %s por requisicao\n", led_state_final ? "LIGADO" : "DESLIGADO");
             }
         }
+        adc_select_input(4);
+        uint16_t raw_temp = adc_read();
+        float temp_c_atual = convert_to_celsius(raw_temp); 
 
+        con_state->body_len = snprintf(con_state->response_body, sizeof(con_state->response_body),
+                                       MAIN_PAGE_HTML_SIMPLES, // <<-- Usando o HTML simplificado
+                                       led_state_final ? "LIGADO" : "DESLIGADO",     
+                                       led_state_final ? 0 : 1,                      
+                                       led_state_final ? "DESLIGADO" : "LIGADO",     
+                                       temp_c_atual);                                     
+        
+        if (con_state->body_len >= sizeof(con_state->response_body) -1 ) {
+            DEBUG_printf("AVISO: Corpo HTML (simples) truncado! Necessario: %d, Buffer: %zu. Ajustando body_len.\n", con_state->body_len, sizeof(con_state->response_body));
+            con_state->body_len = strlen(con_state->response_body); 
+        }
+
+    } else if (strcmp(request_path, PATH_API_TEMPERATURE) == 0) { // Manter o endpoint funcional
         adc_select_input(4);
         uint16_t raw_temp = adc_read();
         float temp_c = convert_to_celsius(raw_temp);
-        DEBUG_printf("Estado atual LED: %s, Raw temp: %d, Temp C: %.2f\n", current_led_state ? "LIGADO" : "DESLIGADO", raw_temp, temp_c);
+        con_state->body_len = snprintf(con_state->response_body, sizeof(con_state->response_body),
+                                       "{\"temperatura\": %.2f}", temp_c);
+        if (con_state->body_len >= sizeof(con_state->response_body) -1) {
+            DEBUG_printf("AVISO: Corpo JSON truncado! Necessario: %d, Buffer: %zu. Ajustando body_len.\n", con_state->body_len, sizeof(con_state->response_body));
+            con_state->body_len = strlen(con_state->response_body);
+        }
+        strcpy(content_type_str, "application/json; charset=utf-8");
 
-        if (current_led_state) {
-            len = snprintf(result, max_result_len, LED_AND_TEMP_BODY, "LIGADO", 0, "DESLIGADO", temp_c);
-        } else {
-            len = snprintf(result, max_result_len, LED_AND_TEMP_BODY, "DESLIGADO", 1, "LIGADO", temp_c);
+    } else {
+        http_status_code = 302; 
+        http_status_text = "Found";
+    }
+
+    if (http_status_code == 302) {
+         con_state->header_len = snprintf(con_state->response_header, sizeof(con_state->response_header),
+                                     HTTP_REDIRECT_HEADER_FORMAT, ipaddr_ntoa(con_state->gw));
+        con_state->body_len = 0; 
+    } else {
+        con_state->header_len = snprintf(con_state->response_header, sizeof(con_state->response_header),
+                                   "HTTP/1.1 %d %s\r\n"
+                                   "Content-Type: %s\r\n"
+                                   "Content-Length: %d\r\n"
+                                   "Connection: close\r\n\r\n",
+                                   http_status_code, http_status_text,
+                                   content_type_str,
+                                   con_state->body_len); 
+
+        if (con_state->header_len >= sizeof(con_state->response_header) -1) {
+            DEBUG_printf("ERRO FATAL: Cabecalho HTTP truncado! Necessario: %d, Buffer: %zu\n", con_state->header_len, sizeof(con_state->response_header));
+            con_state->header_len = 0; 
+            con_state->body_len = 0;   
         }
     }
-    return len;
 }
 
 err_t tcp_server_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err_in) {
     TCP_CONNECT_STATE_T *con_state = (TCP_CONNECT_STATE_T*)arg;
+    char client_request_buffer[128]; 
 
     if (err_in != ERR_OK) {
         DEBUG_printf("tcp_server_recv erro %d\n", err_in);
@@ -146,18 +194,20 @@ err_t tcp_server_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err_
         return tcp_close_client_connection(con_state, pcb, ERR_OK);
     }
     
-    assert(con_state && con_state->pcb == pcb);
+    if (!con_state) { // Checagem de seguranca
+        DEBUG_printf("ERRO: con_state eh NULL em tcp_server_recv\n");
+        pbuf_free(p);
+        return ERR_ARG;
+    }
+    assert(con_state->pcb == pcb);
+
 
     if (p->tot_len > 0) {
-        DEBUG_printf("tcp_server_recv %d bytes do cliente\n", p->tot_len);
+        int req_len = pbuf_copy_partial(p, client_request_buffer, sizeof(client_request_buffer) - 1, 0);
+        client_request_buffer[req_len] = '\0';
 
-        pbuf_copy_partial(p, con_state->headers,
-                          p->tot_len > sizeof(con_state->headers) - 1 ? sizeof(con_state->headers) - 1 : p->tot_len,
-                          0);
-        con_state->headers[p->tot_len > sizeof(con_state->headers) - 1 ? sizeof(con_state->headers) - 1 : p->tot_len] = '\0';
-
-        if (strncmp(HTTP_GET, con_state->headers, strlen(HTTP_GET)) == 0) {
-            char *request_uri_start = con_state->headers + strlen(HTTP_GET);
+        if (strncmp(HTTP_GET, client_request_buffer, strlen(HTTP_GET)) == 0) {
+            char *request_uri_start = client_request_buffer + strlen(HTTP_GET);
             while(*request_uri_start == ' ') request_uri_start++; 
 
             char *request_uri_end = strchr(request_uri_start, ' '); 
@@ -171,46 +221,28 @@ err_t tcp_server_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err_
             char *params = strchr(request_path, '?');
             if (params) { *params++ = '\0'; }
 
-            DEBUG_printf("Caminho requisicao: '%s', Parametros: '%s'\n", request_path, params ? params : "null");
+            generate_server_response_content(con_state, request_path, params);
 
-            con_state->result_len = server_content_handler(request_path, params, con_state->result, sizeof(con_state->result));
-
-            if (con_state->result_len >= sizeof(con_state->result)) {
-                DEBUG_printf("Muitos dados no resultado %d para buffer %zu\n", con_state->result_len, sizeof(con_state->result));
-                pbuf_free(p);
-                return tcp_close_client_connection(con_state, pcb, ERR_MEM); 
-            }
-
-            if (con_state->result_len > 0) {
-                con_state->header_len = snprintf(con_state->headers, sizeof(con_state->headers), HTTP_RESPONSE_HEADERS,
-                    200, con_state->result_len);
-            } else {
-                con_state->header_len = snprintf(con_state->headers, sizeof(con_state->headers), HTTP_RESPONSE_REDIRECT_ROOT,
-                    ipaddr_ntoa(con_state->gw)); 
-                DEBUG_printf("Enviando redirecionamento para raiz: %s", con_state->headers);
-                con_state->result_len = 0; 
-            }
-
-             if (con_state->header_len >= sizeof(con_state->headers)) {
-                DEBUG_printf("Muitos dados no cabecalho %d para buffer %zu\n", con_state->header_len, sizeof(con_state->headers));
-                pbuf_free(p);
-                return tcp_close_client_connection(con_state, pcb, ERR_MEM);
-            }
-
-            err_t write_err = tcp_write(pcb, con_state->headers, con_state->header_len, TCP_WRITE_FLAG_COPY);
-            if (write_err != ERR_OK) {
-                DEBUG_printf("falha ao escrever dados do cabecalho %d\n", write_err);
-                pbuf_free(p);
-                return tcp_close_client_connection(con_state, pcb, write_err);
-            }
-
-            if (con_state->result_len > 0) {
-                write_err = tcp_write(pcb, con_state->result, con_state->result_len, TCP_WRITE_FLAG_COPY);
+            if (con_state->header_len > 0) { 
+                err_t write_err = tcp_write(pcb, con_state->response_header, con_state->header_len, TCP_WRITE_FLAG_COPY);
                 if (write_err != ERR_OK) {
-                    DEBUG_printf("falha ao escrever dados do resultado %d\n", write_err);
+                    DEBUG_printf("falha ao escrever dados do cabecalho %d\n", write_err);
                     pbuf_free(p);
                     return tcp_close_client_connection(con_state, pcb, write_err);
                 }
+
+                if (con_state->body_len > 0) {
+                    write_err = tcp_write(pcb, con_state->response_body, con_state->body_len, TCP_WRITE_FLAG_COPY);
+                    if (write_err != ERR_OK) {
+                        DEBUG_printf("falha ao escrever dados do corpo %d\n", write_err);
+                        pbuf_free(p);
+                        return tcp_close_client_connection(con_state, pcb, write_err);
+                    }
+                }
+            } else {
+                DEBUG_printf("ERRO: Cabecalho nao foi gerado, fechando conexao.\n");
+                pbuf_free(p);
+                return tcp_close_client_connection(con_state, pcb, ERR_VAL); 
             }
         }
         tcp_recved(pcb, p->tot_len); 
@@ -221,7 +253,6 @@ err_t tcp_server_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err_
 
 static err_t tcp_server_poll_cb(void *arg, struct tcp_pcb *pcb) {
     TCP_CONNECT_STATE_T *con_state = (TCP_CONNECT_STATE_T*)arg;
-    DEBUG_printf("tcp_server_poll_cb para pcb %p\n", (void*)pcb);
     return tcp_close_client_connection(con_state, pcb, ERR_OK); 
 }
 
@@ -230,7 +261,8 @@ static void tcp_server_err_cb(void *arg, err_t err) {
     if (err != ERR_ABRT) { 
         DEBUG_printf("tcp_server_err_cb: erro %d\n", err);
         if (con_state) {
-            free(con_state);
+            // Nao acessar con_state->pcb aqui, pois pode ja ter sido liberado pelo LwIP
+            free(con_state); // Apenas libera o estado da aplicacao
         }
     } else {
         DEBUG_printf("tcp_server_err_cb: conexao abortada\n");
@@ -243,7 +275,7 @@ static void tcp_server_err_cb(void *arg, err_t err) {
 static err_t tcp_server_accept_cb(void *arg, struct tcp_pcb *client_pcb, err_t err) {
     TCP_SERVER_T *server_state = (TCP_SERVER_T*)arg;
     if (err != ERR_OK || client_pcb == NULL) {
-        DEBUG_printf("falha no callback de accept: err %d, client_pcb eh %s\n", err, client_pcb ? "valido" : "NULL");
+        DEBUG_printf("falha no callback de accept: err %d\n", err);
         return ERR_VAL;
     }
     DEBUG_printf("cliente conectado de %s porta %u\n", ipaddr_ntoa(&client_pcb->remote_ip), client_pcb->remote_port);
@@ -285,7 +317,7 @@ static bool tcp_server_open(TCP_SERVER_T *server_state) {
     server_state->server_pcb = tcp_listen_with_backlog(pcb, 1); 
     if (!server_state->server_pcb) {
         DEBUG_printf("falha ao escutar (listen)\n");
-        if (pcb) {
+        if (pcb) { // pcb original nao eh o de escuta se listen falhar
             tcp_close(pcb);
         }
         return false;
@@ -309,7 +341,7 @@ void key_pressed_callback(void *param) {
 
 int main() {
     stdio_init_all();
-    DEBUG_printf("Pico W Ponto de Acesso - Controle de LED e Temperatura\n");
+    DEBUG_printf("Pico W Ponto de Acesso - Versao Simplificada HTML\n");
 
     gpio_init(LED_GPIO);
     gpio_set_dir(LED_GPIO, GPIO_OUT);
@@ -378,13 +410,12 @@ int main() {
 
     server_state->complete = false;
     while(!server_state->complete) {
-        // Adicionada leitura e impressão da temperatura no loop principal
-        adc_select_input(4); // Seleciona o canal do sensor de temperatura
+        adc_select_input(4); 
         uint16_t raw_temp = adc_read();
         float temp_c = convert_to_celsius(raw_temp);
-        printf("Temperatura interna atual: %.2f C\n", temp_c);
+        printf("Temperatura interna atual (Terminal): %.2f C\n", temp_c); 
         
-        sleep_ms(1000); // Imprime a temperatura a cada 1 segundo
+        sleep_ms(1000); 
     }
 
     DEBUG_printf("Encerrando...\n");
