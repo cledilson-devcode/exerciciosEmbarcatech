@@ -1,7 +1,7 @@
 /**
  * Projeto: Servidor HTTP com controle de LED e Leitura de Temperatura via Access Point - Raspberry Pi Pico W
- * VERSAO SIMPLIFICADA PARA RESTABELECER ACESSO AO AP E PAGINA BASICA.
- * JavaScript complexo removido temporariamente.
+ * HTML com atualizacao dinamica da temperatura via JavaScript (Fetch API) a cada 1 segundo.
+ * Lista de temperaturas capturadas ao ligar o LED, persistida com localStorage.
  */
 
 #include <string.h>
@@ -25,19 +25,77 @@
 
 #define HTTP_GET "GET"
 
-// HTML PRINCIPAL EXTREMAMENTE SIMPLIFICADO - SEM JAVASCRIPT COMPLEXO
-#define MAIN_PAGE_HTML_SIMPLES \
-    "<html><head><title>Pico W Controle Simples</title>" \
-    "<meta http-equiv=\"refresh\" content=\"5\">" /* Meta refresh opcional, descomente se quiser */ \
-    "</head><body>" \
-    "<h1>Pico W Controle Simples</h1><p>LED esta: %s</p>" \
+// HTML principal - Intervalo do JavaScript atualizado para 1000ms (1 segundo)
+#define MAIN_PAGE_HTML \
+    "<html><head><title>Pico W Controle</title></head><body>" \
+    "<h1>Pico W Controle</h1>" \
+    "<p>LED esta: <span id=\"estadoLedHtml\">%s</span></p>" \
     "<p><a href=\"/?led=%d\">Mudar LED para %s</a></p><hr>" \
-    "<p>Temperatura Interna: %.2f °C</p>" \
+    "<p>Temperatura Interna Atual: <span id=\"temperaturaAtualHtml\">%.2f</span> °C</p>" \
+    "<hr><h3>Temperaturas Capturadas (quando LED foi ligado):</h3>" \
+    "<div id=\"listaTemperaturasHtml\"><p>Carregando lista...</p></div>" \
+    "<script>" \
+    "const servidorLedLigado = %s; /* Injetado pelo C: true ou false */\n" \
+    "const servidorTemperaturaInicial = %.2f; /* Injetado pelo C */\n" \
+    "let capturasSalvas = JSON.parse(localStorage.getItem('picoTemperaturas')) || [];\n" \
+    "\n" \
+    "const spanTempAtual = document.getElementById('temperaturaAtualHtml');\n" \
+    "const divListaTemp = document.getElementById('listaTemperaturasHtml');\n" \
+    "\n" \
+    "function atualizarSpanTemperatura(tempValor) {" \
+    "  if (spanTempAtual) spanTempAtual.innerText = parseFloat(tempValor).toFixed(2);" \
+    "}\n" \
+    "\n" \
+    "function mostrarListaTemperaturas() {" \
+    "  if (!divListaTemp) return;\n" \
+    "  divListaTemp.innerHTML = '';\n" \
+    "  if (capturasSalvas.length === 0) {" \
+    "    divListaTemp.innerHTML = '<p>Nenhuma temperatura capturada.</p>';" \
+    "    return;" \
+    "  }\n" \
+    "  const ul = document.createElement('ul');\n" \
+    "  capturasSalvas.forEach(function(item) {" \
+    "    const li = document.createElement('li');" \
+    "    li.textContent = parseFloat(item.temp).toFixed(2) + ' C (as ' + new Date(item.time).toLocaleTimeString() + ')';" \
+    "    ul.appendChild(li);" \
+    "  });\n" \
+    "  divListaTemp.appendChild(ul);" \
+    "}\n" \
+    "\n" \
+    "function fetchTemperaturaPeriodica() {" \
+    "  fetch('/api/temperatura')" \
+    "    .then(response => response.json())" \
+    "    .then(data => { atualizarSpanTemperatura(data.temperatura); })" \
+    "    .catch(error => {" \
+    "      console.error('Erro ao buscar temperatura periodicamente:', error);" \
+    "      if(spanTempAtual) spanTempAtual.innerText = 'Erro!';" \
+    "    });" \
+    "}\n" \
+    "\n" \
+    "document.addEventListener('DOMContentLoaded', function() {" \
+    "  console.log('DOM Carregado. LED Ligado (do servidor):', servidorLedLigado, 'Temp Inicial (do servidor):', servidorTemperaturaInicial);\n" \
+    "  atualizarSpanTemperatura(servidorTemperaturaInicial);\n" \
+    "  mostrarListaTemperaturas();\n" \
+    "\n" \
+    "  const paramsUrl = new URLSearchParams(window.location.search);\n" \
+    "  const acaoLed = paramsUrl.get('led');\n" \
+    "\n" \
+    "  if (acaoLed !== null && servidorLedLigado) {\n" \
+    "    console.log('LED foi LIGADO nesta acao, capturando temperatura:', servidorTemperaturaInicial);\n" \
+    "    const novaCaptura = { temp: servidorTemperaturaInicial, time: Date.now() };\n" \
+    "    capturasSalvas.push(novaCaptura);\n" \
+    "    localStorage.setItem('picoTemperaturas', JSON.stringify(capturasSalvas));\n" \
+    "    mostrarListaTemperaturas(); \n" \
+    "  }\n" \
+    "\n" \
+    "  setInterval(fetchTemperaturaPeriodica, 1000); /* ATUALIZADO PARA 1000ms (1 SEGUNDO) */ \n" \
+    "});\n" \
+    "</script>" \
     "</body></html>"
 
 #define LED_PARAM "led=%d"
 #define PATH_MAIN_PAGE "/"
-#define PATH_API_TEMPERATURE "/api/temperatura" // Manteremos o endpoint, mas o HTML nao o usara nesta versao
+#define PATH_API_TEMPERATURE "/api/temperatura"
 #define LED_GPIO 13
 #define HTTP_REDIRECT_HEADER_FORMAT "HTTP/1.1 302 Found\r\nLocation: http://%s/\r\nConnection: close\r\n\r\n"
 
@@ -52,7 +110,7 @@ typedef struct TCP_CONNECT_STATE_T_ {
     struct tcp_pcb *pcb;
     int sent_len;
     char response_header[256]; 
-    char response_body[1024];   // Buffer razoavel para HTML simples
+    char response_body[3072];   // Buffer para HTML + JS
     int header_len;
     int body_len;
     ip_addr_t *gw;
@@ -95,17 +153,16 @@ static void tcp_server_close(TCP_SERVER_T *state) {
 
 static err_t tcp_server_sent(void *arg, struct tcp_pcb *pcb, u16_t len) {
     TCP_CONNECT_STATE_T *con_state = (TCP_CONNECT_STATE_T*)arg;
-    if (!con_state) return ERR_OK; // Evita crash se con_state ja foi liberado
+    if (!con_state) return ERR_OK; 
 
     con_state->sent_len += len;
     if (con_state->sent_len >= con_state->header_len + con_state->body_len) {
-        //DEBUG_printf("envio completo: %d bytes (cab: %d, corpo: %d)\n", con_state->sent_len, con_state->header_len, con_state->body_len);
+        // DEBUG_printf("envio completo: %d bytes (cab: %d, corpo: %d)\n", con_state->sent_len, con_state->header_len, con_state->body_len);
         return tcp_close_client_connection(con_state, pcb, ERR_OK);
     }
     return ERR_OK;
 }
 
-// generate_server_response_content - USANDO HTML SIMPLIFICADO
 static void generate_server_response_content(TCP_CONNECT_STATE_T *con_state, const char *request_path, const char *params) {
     con_state->body_len = 0;
     con_state->header_len = 0;
@@ -129,25 +186,28 @@ static void generate_server_response_content(TCP_CONNECT_STATE_T *con_state, con
         float temp_c_atual = convert_to_celsius(raw_temp); 
 
         con_state->body_len = snprintf(con_state->response_body, sizeof(con_state->response_body),
-                                       MAIN_PAGE_HTML_SIMPLES, // <<-- Usando o HTML simplificado
+                                       MAIN_PAGE_HTML,
                                        led_state_final ? "LIGADO" : "DESLIGADO",     
                                        led_state_final ? 0 : 1,                      
                                        led_state_final ? "DESLIGADO" : "LIGADO",     
-                                       temp_c_atual);                                     
+                                       temp_c_atual,                                     
+                                       led_state_final ? "true" : "false",        
+                                       temp_c_atual);                                    
         
         if (con_state->body_len >= sizeof(con_state->response_body) -1 ) {
-            DEBUG_printf("AVISO: Corpo HTML (simples) truncado! Necessario: %d, Buffer: %zu. Ajustando body_len.\n", con_state->body_len, sizeof(con_state->response_body));
+            DEBUG_printf("AVISO: Corpo HTML truncado! Necessario: %d, Buffer: %zu. Ajustando body_len.\n", con_state->body_len, sizeof(con_state->response_body));
             con_state->body_len = strlen(con_state->response_body); 
         }
 
-    } else if (strcmp(request_path, PATH_API_TEMPERATURE) == 0) { // Manter o endpoint funcional
+    } else if (strcmp(request_path, PATH_API_TEMPERATURE) == 0) {
         adc_select_input(4);
         uint16_t raw_temp = adc_read();
         float temp_c = convert_to_celsius(raw_temp);
+        // DEBUG_printf("API: Servindo temperatura: %.2f C\n", temp_c);
         con_state->body_len = snprintf(con_state->response_body, sizeof(con_state->response_body),
                                        "{\"temperatura\": %.2f}", temp_c);
         if (con_state->body_len >= sizeof(con_state->response_body) -1) {
-            DEBUG_printf("AVISO: Corpo JSON truncado! Necessario: %d, Buffer: %zu. Ajustando body_len.\n", con_state->body_len, sizeof(con_state->response_body));
+             DEBUG_printf("AVISO: Corpo JSON truncado! Necessario: %d, Buffer: %zu. Ajustando body_len.\n", con_state->body_len, sizeof(con_state->response_body));
             con_state->body_len = strlen(con_state->response_body);
         }
         strcpy(content_type_str, "application/json; charset=utf-8");
@@ -177,6 +237,8 @@ static void generate_server_response_content(TCP_CONNECT_STATE_T *con_state, con
             con_state->body_len = 0;   
         }
     }
+    // DEBUG_printf("Preparando resposta: Status %d, CT: %s, CL: %d, HL: %d\n",
+    //              http_status_code, content_type_str, con_state->body_len, con_state->header_len);
 }
 
 err_t tcp_server_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err_in) {
@@ -194,13 +256,13 @@ err_t tcp_server_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err_
         return tcp_close_client_connection(con_state, pcb, ERR_OK);
     }
     
-    if (!con_state) { // Checagem de seguranca
+    if (!con_state) { 
         DEBUG_printf("ERRO: con_state eh NULL em tcp_server_recv\n");
         pbuf_free(p);
-        return ERR_ARG;
+        tcp_abort(pcb); // Aborta o pcb se nao temos estado para ele
+        return ERR_ABRT;
     }
     assert(con_state->pcb == pcb);
-
 
     if (p->tot_len > 0) {
         int req_len = pbuf_copy_partial(p, client_request_buffer, sizeof(client_request_buffer) - 1, 0);
@@ -261,8 +323,7 @@ static void tcp_server_err_cb(void *arg, err_t err) {
     if (err != ERR_ABRT) { 
         DEBUG_printf("tcp_server_err_cb: erro %d\n", err);
         if (con_state) {
-            // Nao acessar con_state->pcb aqui, pois pode ja ter sido liberado pelo LwIP
-            free(con_state); // Apenas libera o estado da aplicacao
+            free(con_state); 
         }
     } else {
         DEBUG_printf("tcp_server_err_cb: conexao abortada\n");
@@ -317,7 +378,7 @@ static bool tcp_server_open(TCP_SERVER_T *server_state) {
     server_state->server_pcb = tcp_listen_with_backlog(pcb, 1); 
     if (!server_state->server_pcb) {
         DEBUG_printf("falha ao escutar (listen)\n");
-        if (pcb) { // pcb original nao eh o de escuta se listen falhar
+        if (pcb) { 
             tcp_close(pcb);
         }
         return false;
@@ -341,7 +402,7 @@ void key_pressed_callback(void *param) {
 
 int main() {
     stdio_init_all();
-    DEBUG_printf("Pico W Ponto de Acesso - Versao Simplificada HTML\n");
+    DEBUG_printf("Pico W Ponto de Acesso - JS Fetch 1s, Lista localStorage\n");
 
     gpio_init(LED_GPIO);
     gpio_set_dir(LED_GPIO, GPIO_OUT);
