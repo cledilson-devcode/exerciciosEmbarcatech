@@ -25,12 +25,12 @@
 // << --- FIM DA MODIFICAÇÃO --- >>
 
 #define MEM_ALIGNMENT               4
-#define MEM_SIZE                    4000 // Este valor pode precisar de ajuste com MEM_LIBC_MALLOC 0
+#define MEM_SIZE                    (16 * 1024) // Este valor pode precisar de ajuste com MEM_LIBC_MALLOC 0
                                          // LwIP usará seu próprio heap. Se houver problemas de memória (ERR_MEM),
                                          // pode ser necessário aumentar este valor.
-#define MEMP_NUM_TCP_SEG            32
+#define MEMP_NUM_TCP_SEG            64    
 #define MEMP_NUM_ARP_QUEUE          10
-#define PBUF_POOL_SIZE              24
+#define PBUF_POOL_SIZE              48 
 #define LWIP_ARP                    1
 #define LWIP_ETHERNET               1
 #define LWIP_ICMP                   1

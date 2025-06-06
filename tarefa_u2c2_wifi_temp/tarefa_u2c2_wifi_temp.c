@@ -34,6 +34,8 @@
     "<p>Temperatura Interna Atual: <span id=\"temperaturaAtualHtml\">%.2f</span> °C</p>" \
     "<hr><h3>Temperaturas Capturadas (quando LED foi ligado):</h3>" \
     "<div id=\"listaTemperaturasHtml\"><p>Carregando lista...</p></div>" \
+    /* Botao para limpar o localStorage adicionado abaixo */ \
+    "<p><button onclick=\"limparListaTemperaturas()\">Limpar Lista de Temperaturas</button></p>" \
     "<script>" \
     "const servidorLedLigado = %s; /* Injetado pelo C: true ou false */\n" \
     "const servidorTemperaturaInicial = %.2f; /* Injetado pelo C */\n" \
@@ -62,6 +64,16 @@
     "  divListaTemp.appendChild(ul);" \
     "}\n" \
     "\n" \
+    /* Funcao para limpar o localStorage e atualizar a exibicao da lista */ \
+    "function limparListaTemperaturas() {" \
+    "  if (confirm('Tem certeza que deseja limpar todas as temperaturas capturadas?')) {" \
+    "    localStorage.removeItem('picoTemperaturas');\n" \
+    "    capturasSalvas = [];\n" \
+    "    mostrarListaTemperaturas();\n" \
+    "    console.log('Lista de temperaturas limpa.');\n" \
+    "  }" \
+    "}\n" \
+    "\n" \
     "function fetchTemperaturaPeriodica() {" \
     "  fetch('/api/temperatura')" \
     "    .then(response => response.json())" \
@@ -88,7 +100,7 @@
     "    mostrarListaTemperaturas(); \n" \
     "  }\n" \
     "\n" \
-    "  setInterval(fetchTemperaturaPeriodica, 1000); /* ATUALIZADO PARA 1000ms (1 SEGUNDO) */ \n" \
+    "  setInterval(fetchTemperaturaPeriodica, 1000); \n" \
     "});\n" \
     "</script>" \
     "</body></html>"
