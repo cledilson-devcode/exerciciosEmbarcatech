@@ -48,7 +48,7 @@ pico_enable_stdio_uart(NeoControlLab 0)
 pico_enable_stdio_usb(NeoControlLab 1)
 
 # Add the standard library to the build
-target_link_libraries(NeoControlLab pico_stdlib hardware_pio hardware_clocks hardware_adc hardware_dma hardware_pwm)
+target_link_libraries(NeoControlLab pico_stdlib hardware_pio hardware_clocks hardware_adc hardware_dma hardware_pwm hardware_timer hardware_gpio)
 
 # Add the standard include files to the build
 target_include_directories(NeoControlLab PRIVATE ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_CURRENT_LIST_DIR}/LabNeoPixel)
