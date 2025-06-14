@@ -1,4 +1,6 @@
 /**
+ * ARQUIVO PRINCIPAL TAREFA_U2C2_WIFI_TEMP.c
+ * 
  * Projeto: Servidor HTTP com controle de LED e Leitura de Temperatura via Access Point - Raspberry Pi Pico W
  * HTML com atualizacao dinamica da temperatura via JavaScript (Fetch API) a cada 1 segundo.
  * Lista de temperaturas capturadas ao ligar o LED, persistida com localStorage.

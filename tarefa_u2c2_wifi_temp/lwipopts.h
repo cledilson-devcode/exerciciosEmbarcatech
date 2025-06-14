@@ -1,3 +1,4 @@
+// ARQUIVO LWIPOPTS.h
 #ifndef __LWIPOPTS_H__
 #define __LWIPOPTS_H__
 
