@@ -1,13 +1,14 @@
+//
+// display_contador.c
+//
 #include "display_contador.h"
 #include "oled_display.h"
-#include "numeros_grandes.h"
-#include "digitos_grandes_utils.h"
 #include "pico/stdlib.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
 
-// A fila deve ser definida externamente em main.c
+// Declaração da fila que é criada no main.c
 extern QueueHandle_t fila_oled;
 
 void tarefa_display_contador(void *p) {
@@ -20,38 +21,33 @@ void tarefa_display_contador(void *p) {
     oled_clear(buffer, &area);
     render_on_display(buffer, &area);
 
-    int valor = 0;
+    int tempo_recebido = 0;
 
     while (1) {
-        BaseType_t recebido = xQueueReceive(fila_oled, &valor, portMAX_DELAY);
+        // Espera bloqueado até receber um novo valor de tempo da fila
+        if (xQueueReceive(fila_oled, &tempo_recebido, portMAX_DELAY) == pdTRUE) {
+            
+            // Inicia a contagem regressiva no display
+            for (int i = tempo_recebido; i >= 1; i--) {
+                oled_clear(buffer, &area);
 
-        if (recebido == pdTRUE) {
-            if (valor > 0) {
+                // Extrai dezena e unidade para exibir
+                int dezena  = (i / 10) % 10;
+                int unidade = i % 10;
                 
-                for (int i = valor; i >= 1; i--) {
-                    oled_clear(buffer, &area);
+                // Exibe os dígitos grandes no centro do display
+                exibir_digito_grande(buffer, 30, numeros_grandes[dezena]);
+                exibir_digito_grande(buffer, 70, numeros_grandes[unidade]);
 
-                    int dezena  = (i / 10) % 10;
-                    int unidade = i % 10;
-                        if (valor == 60)
-                            ssd1306_draw_utf8_multiline(buffer,0,0,"AVENIDA");
-                        else if (valor = 20)
-                            ssd1306_draw_utf8_multiline(buffer,0,0,"PEDESTRE");
-                    exibir_digito_grande(buffer, 30, numeros_grandes[dezena]);
-                    exibir_digito_grande(buffer, 70, numeros_grandes[unidade]);
-
-                    render_on_display(buffer, &area);
-                    vTaskDelay(pdMS_TO_TICKS(1000));
-                }
-
-                // Limpa o display ao final do contador
-                oled_clear(buffer, &area);
                 render_on_display(buffer, &area);
-            } else {
-                // Limpa diretamente se valor == 0
-                oled_clear(buffer, &area);
-                render_on_display(buffer, &area);
+                
+                // Espera 1 segundo antes de atualizar o display novamente
+                vTaskDelay(pdMS_TO_TICKS(1000));
             }
+
+            // Limpa o display ao final da contagem
+            oled_clear(buffer, &area);
+            render_on_display(buffer, &area);
         }
     }
 }
