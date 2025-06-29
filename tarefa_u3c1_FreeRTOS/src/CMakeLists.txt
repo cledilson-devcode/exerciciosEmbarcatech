@@ -9,6 +9,7 @@ add_executable(Tarefa_FreeRTOS_C
     numeros_grandes.c
     fsm_semaforo.c
     display_contador.c 
+    button_handler.c
 )
 
 # Corrige a saída para build/ em vez de build/src/
