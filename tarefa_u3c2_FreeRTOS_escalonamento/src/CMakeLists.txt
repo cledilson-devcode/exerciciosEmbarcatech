@@ -1,4 +1,4 @@
-add_executable(Tarefa_FreeRTOS_A
+add_executable(tarefa_u3c2_FreeRTOS_escalonamento
     main.c
     botoes.c 
     leds_rgb.c 
@@ -8,21 +8,21 @@ add_executable(Tarefa_FreeRTOS_A
 )
 
 # Corrige a saída para build/ em vez de build/src/
-set_target_properties(Tarefa_FreeRTOS_A PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+set_target_properties(tarefa_u3c2_FreeRTOS_escalonamento PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-target_sources(Tarefa_FreeRTOS_A PRIVATE
+target_sources(tarefa_u3c2_FreeRTOS_escalonamento PRIVATE
     ${FREERTOS_KERNEL_PATH}/portable/MemMang/heap_4.c
 )
 
-target_include_directories(Tarefa_FreeRTOS_A PRIVATE
+target_include_directories(tarefa_u3c2_FreeRTOS_escalonamento PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}
     ${CMAKE_CURRENT_LIST_DIR}/../inc
 
 )
 
-target_link_libraries(Tarefa_FreeRTOS_A
+target_link_libraries(tarefa_u3c2_FreeRTOS_escalonamento
     pico_stdlib 
     FreeRTOS-Kernel
 )
 
-pico_add_extra_outputs(Tarefa_FreeRTOS_A)
+pico_add_extra_outputs(tarefa_u3c2_FreeRTOS_escalonamento)
