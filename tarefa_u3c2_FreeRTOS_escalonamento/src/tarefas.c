@@ -19,11 +19,11 @@ void task_self_test(void *params) {
     vTaskDelay(pdMS_TO_TICKS(2000));
 
     // Sequência de chamadas para as funções de teste de cada periférico.
-    test_leds_rgb();         vTaskDelay(pdMS_TO_TICKS(500));
-    test_buzzer_pwm();       vTaskDelay(pdMS_TO_TICKS(500));
-    test_botoes();           vTaskDelay(pdMS_TO_TICKS(500));
-    test_joystick_analog();  vTaskDelay(pdMS_TO_TICKS(500));
-    test_microfone();        vTaskDelay(pdMS_TO_TICKS(500));
+    test_leds_rgb();         vTaskDelay(pdMS_TO_TICKS(1000));
+    test_buzzer_pwm();       vTaskDelay(pdMS_TO_TICKS(1000));
+    test_botoes();           vTaskDelay(pdMS_TO_TICKS(1000));
+    test_joystick_analog();  vTaskDelay(pdMS_TO_TICKS(1000));
+    test_microfone();        vTaskDelay(pdMS_TO_TICKS(1000));
 
     printf("[TAREFA 1] Self-Test concluido. Sinalizando para Tarefas 2 e 3.\n\n");
 
