@@ -1,9 +1,7 @@
 add_executable(tarefa_u3c2_FreeRTOS_escalonamento
     main.c
-    botoes.c 
-    leds_rgb.c 
-    tarefas_rgb_smp.c
-    task_gerenciadora.c 
+    perifericos.c 
+    tarefas.c 
 
 )
 
@@ -23,6 +21,7 @@ target_include_directories(tarefa_u3c2_FreeRTOS_escalonamento PRIVATE
 target_link_libraries(tarefa_u3c2_FreeRTOS_escalonamento
     pico_stdlib 
     FreeRTOS-Kernel
+    hardware_adc
 )
 
 pico_add_extra_outputs(tarefa_u3c2_FreeRTOS_escalonamento)
