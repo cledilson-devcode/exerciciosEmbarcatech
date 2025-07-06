@@ -6,8 +6,10 @@
 
 // Handle para a tarefa de autoteste
 extern TaskHandle_t handle_self_test;
+extern TaskHandle_t handle_alive_task; 
 
 // Protótipo da tarefa
 void task_self_test(void *params);
+void task_alive(void *params);
 
 #endif
