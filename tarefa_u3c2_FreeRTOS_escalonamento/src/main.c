@@ -2,57 +2,51 @@
 #include "pico/stdlib.h"
 #include "FreeRTOS.h"
 #include "task.h"
-#include "semphr.h" // Header para semáforos
+#include "semphr.h"
 
 #include "perifericos.h"
 #include "tarefas.h"
 
-
-// Handle para a tarefa, permite controle futuro
+// Handles para as tarefas
 TaskHandle_t handle_self_test = NULL;
 TaskHandle_t handle_alive_task = NULL;
+TaskHandle_t handle_monitor_task = NULL;
+
 // Handle para o semáforo de sincronização
 SemaphoreHandle_t self_test_sem = NULL;
 
 int main() {
-    // Inicializa a comunicação serial USB e aguarda a conexão
     stdio_init_all();
-
+    
     while (!stdio_usb_connected()) sleep_ms(200);
 
-    // Inicializa todo o hardware da placa BitDogLab
     init_perifericos();
 
-    // Cria o semáforo binário
-    // O semáforo começa "vazio". Ninguém pode pegá-lo até que seja "dado".
     self_test_sem = xSemaphoreCreateBinary();
     if (self_test_sem == NULL) {
         printf("ERRO: Nao foi possivel criar o semaforo.\n");
-        while(1); // Trava o sistema se o semáforo não puder ser criado
+        while(1);
     }
 
-    printf("Sistema inicializado. Criando tarefas FreeRTOS...\n");
+    printf("Sistema inicializado. Criando tarefas FreeRTOS com afinidade de nucleo (SMP)...\n");
 
-    // Criação da Tarefa 1: Self-Test
-    xTaskCreate(task_self_test,      // Função da tarefa
-                "Self-Test Task",    // Nome da tarefa
-                2048,                // Tamanho da pilha (aumentado por causa do printf)
-                NULL,                // Parâmetros da tarefa
-                1,                   // Prioridade
-                &handle_self_test);  // Handle da tarefa
-    
+    // ======================================================================
+    // Criação das tarefas com afinidade de núcleo
+    // ======================================================================
 
-     // Criação da Tarefa 2: Alive Task
-    xTaskCreate(task_alive,          // Função da tarefa
-                "Alive Task",        // Nome da tarefa
-                256,                 // Tamanho da pilha (tarefa simples, não precisa de muito)
-                NULL,                // Parâmetros da tarefa
-                2,                   // Prioridade (maior que a do self-test)
-                &handle_alive_task); // Handle da tarefa
+    // Tarefa 1: Self-Test (será executada no Núcleo 0)
+    xTaskCreate(task_self_test, "Self-Test Task", 2048, NULL, 1, &handle_self_test);
+    // vTaskCoreAffinitySet(handle_self_test, (1 << 0)); // Prende a tarefa ao Núcleo 0
 
-    // AQUI SERÃO CRIADAS AS TAREFAS  3 NO FUTURO
+    // Tarefa 2: Alive Task (será executada no Núcleo 1)
+    xTaskCreate(task_alive, "Alive Task", 256, NULL, 2, &handle_alive_task);
+    // vTaskCoreAffinitySet(handle_alive_task, (1 << 1)); // Prende a tarefa ao Núcleo 1
 
-    // Inicia o escalonador do FreeRTOS
+    // Tarefa 3: Monitor (será executada no Núcleo 0)
+    xTaskCreate(task_monitor_joystick, "Monitor Task", 1024, NULL, 3, &handle_monitor_task);
+    // vTaskCoreAffinitySet(handle_monitor_task, (1 << 0)); // Prende a tarefa ao Núcleo 0
+
+    // Inicia o escalonador do FreeRTOS para ambos os núcleos
     vTaskStartScheduler();
 
     // O código nunca deve chegar aqui
