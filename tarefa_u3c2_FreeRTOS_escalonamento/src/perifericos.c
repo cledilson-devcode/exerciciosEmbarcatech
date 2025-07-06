@@ -4,9 +4,13 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "bitdoglab_pins.h"
+#include "hardware/pwm.h"
 
 // Fator de conversão para o ADC de 12 bits (3.3V / 4095)
 const float ADC_CONVERSION_FACTOR = 3.3f / (1 << 12);
+
+// Variável global para guardar o "slice" do PWM
+static uint slice_num;
 
 /**
  * @brief Inicializa todos os periféricos necessários para a aplicação.
@@ -43,16 +47,16 @@ void test_leds_rgb() {
     printf("  [OK] LEDs RGB testados.\n");
 }
 
-/**
- * @brief Gera um som simples no buzzer.
- */
-void test_buzzer() {
-    printf("  [TESTE] Testando Buzzer...\n");
-    gpio_put(BUZZER_PIN, 1);
-    vTaskDelay(pdMS_TO_TICKS(300));
-    gpio_put(BUZZER_PIN, 0);
-    printf("  [OK] Buzzer testado.\n");
-}
+// /**
+//  * @brief Gera um som simples no buzzer.
+//  */
+// void test_buzzer() {
+//     printf("  [TESTE] Testando Buzzer...\n");
+//     gpio_put(BUZZER_PIN, 1);
+//     vTaskDelay(pdMS_TO_TICKS(300));
+//     gpio_put(BUZZER_PIN, 0);
+//     printf("  [OK] Buzzer testado.\n");
+// }
 
 /**
  * @brief Lê e imprime o estado dos botões.
@@ -97,3 +101,51 @@ void test_microfone() { // <-- FUNÇÃO NOVA
     
     printf("  [OK] Microfone testado.\n");
 }
+
+
+/**
+ * @brief Inicializa o hardware de PWM para o pino do buzzer.
+ */
+void buzzer_pwm_init() {
+    gpio_set_function(BUZZER_PIN, GPIO_FUNC_PWM);
+    slice_num = pwm_gpio_to_slice_num(BUZZER_PIN);
+
+    // --- ESTRATÉGIA CORRIGIDA PARA FREQUÊNCIAS BAIXAS ---
+    // 1. Escolhemos um divisor para desacelerar o clock do PWM.
+    // O divisor pode ser um número de ponto flutuante de 1.0 a 255.99...
+    float divisor = 10.0f; 
+    pwm_set_clkdiv(slice_num, divisor);
+
+    // 2. Calculamos o valor de wrap para a frequência desejada com o novo clock.
+    // Frequência desejada: ~262 Hz (Dó Central)
+    // Wrap = (125MHz / divisor) / freq - 1
+    uint16_t wrap_value = (125000000 / divisor) / 262 - 1;
+    pwm_set_wrap(slice_num, wrap_value);
+
+    // 3. Ajustamos o duty cycle para 50% do novo valor de wrap.
+    pwm_set_chan_level(slice_num, pwm_gpio_to_channel(BUZZER_PIN), wrap_value / 10);
+
+    // Inicialmente, o PWM fica desabilitado
+    pwm_set_enabled(slice_num, false);
+}
+
+/**
+ * @brief Liga ou desliga o som do alarme.
+ * @param on true para ligar, false para desligar.
+ */
+void buzzer_set_alarm(bool on) {
+    pwm_set_enabled(slice_num, on);
+}
+
+/**
+ * @brief Realiza um teste audível no buzzer usando PWM.
+ */
+void test_buzzer_pwm() { 
+    printf("  [TESTE] Testando Buzzer com PWM...\n");
+    buzzer_set_alarm(true); // Liga o som
+    vTaskDelay(pdMS_TO_TICKS(300)); // Deixa tocar por 300ms
+    buzzer_set_alarm(false); // Desliga o som
+    printf("  [OK] Buzzer testado.\n");
+}
+
+

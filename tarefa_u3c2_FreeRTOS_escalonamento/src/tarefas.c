@@ -19,7 +19,11 @@ void task_self_test(void *params) {
     vTaskDelay(pdMS_TO_TICKS(1000));
 
     test_leds_rgb();         vTaskDelay(pdMS_TO_TICKS(500));
-    test_buzzer();           vTaskDelay(pdMS_TO_TICKS(500));
+
+    // Teste do buzzer usando a função PWM
+    test_buzzer_pwm();
+    vTaskDelay(pdMS_TO_TICKS(500));
+    
     test_botoes();           vTaskDelay(pdMS_TO_TICKS(500));
     test_joystick_analog();  vTaskDelay(pdMS_TO_TICKS(500));
     test_microfone();        vTaskDelay(pdMS_TO_TICKS(500));
@@ -56,22 +60,18 @@ void task_monitor_joystick(void *params) {
         printf("[TAREFA 3] Sinal recebido. Iniciando Monitor Task...\n");
 
         while (true) {
-            // Leitura do Eixo Y (ADC0)
+            // ... (lógica de leitura do ADC) ...
             adc_select_input(0);
             float voltageY = adc_read() * ADC_CONVERSION_FACTOR;
-
-            // Leitura do Eixo X (ADC1)
             adc_select_input(1);
             float voltageX = adc_read() * ADC_CONVERSION_FACTOR;
-
-            // Imprime as leituras no terminal
             printf("JOYSTICK -> X: %.2f V, Y: %.2f V\n", voltageX, voltageY);
 
-            // Lógica do Alarme
+            // Lógica do Alarme com PWM
             if (voltageX > 3.0f || voltageY > 3.0f) {
-                gpio_put(BUZZER_PIN, 1);
+                buzzer_set_alarm(true); // Liga o som
             } else {
-                gpio_put(BUZZER_PIN, 0);
+                buzzer_set_alarm(false); // Desliga o som
             }
 
             vTaskDelay(pdMS_TO_TICKS(50));

@@ -21,6 +21,7 @@ int main() {
     while (!stdio_usb_connected()) sleep_ms(200);
 
     init_perifericos();
+    buzzer_pwm_init();
 
     self_test_sem = xSemaphoreCreateBinary();
     if (self_test_sem == NULL) {

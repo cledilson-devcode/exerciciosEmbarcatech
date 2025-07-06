@@ -22,6 +22,7 @@ target_link_libraries(tarefa_u3c2_FreeRTOS_escalonamento
     pico_stdlib 
     FreeRTOS-Kernel
     hardware_adc
+    hardware_pwm
 )
 
 pico_add_extra_outputs(tarefa_u3c2_FreeRTOS_escalonamento)
