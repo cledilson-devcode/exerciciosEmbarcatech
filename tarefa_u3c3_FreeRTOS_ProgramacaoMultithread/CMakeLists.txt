@@ -27,7 +27,7 @@ set(PICO_BOARD pico_w CACHE STRING "Board type")
 include(pico_sdk_import.cmake)
 
 # Define projeto
-project(tarefa_u3c3_FreeRTOS_ProgramaçãoMultithread C CXX ASM)
+project(tarefa_u3c3_FreeRTOS_ProgramacaoMultithread C CXX ASM)
 
 #add_compile_definitions(configUSE_CORE_AFFINITY=0)
 
@@ -35,8 +35,8 @@ project(tarefa_u3c3_FreeRTOS_ProgramaçãoMultithread C CXX ASM)
 pico_sdk_init()
 
 # Modify the below lines to enable/disable output over UART/USB
-#pico_enable_stdio_uart(tarefa_u3c3_FreeRTOS_ProgramaçãoMultithread 0)
-#pico_enable_stdio_usb(tarefa_u3c3_FreeRTOS_ProgramaçãoMultithread 1)
+#pico_enable_stdio_uart(tarefa_u3c3_FreeRTOS_ProgramacaoMultithread 0)
+#pico_enable_stdio_usb(tarefa_u3c3_FreeRTOS_ProgramacaoMultithread 1)
 
 # Caminho para o FreeRTOS
 set(FREERTOS_KERNEL_PATH ${CMAKE_CURRENT_SOURCE_DIR}/lib/FreeRTOS-Kernel)
@@ -48,12 +48,12 @@ include(${FREERTOS_KERNEL_PATH}/portable/ThirdParty/GCC/RP2040/FreeRTOS_Kernel_i
 add_subdirectory(src)
 
 # Add any user requested libraries
-target_link_libraries(tarefa_u3c3_FreeRTOS_ProgramaçãoMultithread)
+target_link_libraries(tarefa_u3c3_FreeRTOS_ProgramacaoMultithread)
 
 # Modify the below lines to enable/disable output over UART/USB
-pico_enable_stdio_uart(tarefa_u3c3_FreeRTOS_ProgramaçãoMultithread 0)
-pico_enable_stdio_usb(tarefa_u3c3_FreeRTOS_ProgramaçãoMultithread 1)
+pico_enable_stdio_uart(tarefa_u3c3_FreeRTOS_ProgramacaoMultithread 0)
+pico_enable_stdio_usb(tarefa_u3c3_FreeRTOS_ProgramacaoMultithread 1)
 
-#pico_add_extra_outputs(tarefa_u3c3_FreeRTOS_ProgramaçãoMultithread)
+#pico_add_extra_outputs(tarefa_u3c3_FreeRTOS_ProgramacaoMultithread)
 
-#pico_add_extra_outputs(tarefa_u3c3_FreeRTOS_ProgramaçãoMultithread)
+#pico_add_extra_outputs(tarefa_u3c3_FreeRTOS_ProgramacaoMultithread)
